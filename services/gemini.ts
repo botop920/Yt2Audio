@@ -133,7 +133,8 @@ export const extractScriptFromUrl = async (
 
 export const generateVoiceOver = async (
   script: string,
-  voice: VoiceConfig
+  voice: VoiceConfig,
+  speed: string = 'Normal'
 ): Promise<string> => {
   const ai = getAiClient();
   
@@ -147,12 +148,30 @@ export const generateVoiceOver = async (
     .replace(/\(.*?\)/g, '')
     .trim();
 
+  let speedInstruction = "";
+  switch(speed) {
+    case 'Slow':
+      speedInstruction = "Speaking Rate: Slow (approx 0.8x). Speak slowly, clearly, and deliberately.";
+      break;
+    case 'Fast':
+      speedInstruction = "Speaking Rate: Fast (approx 1.2x). Speak quickly, energetically, and efficiently.";
+      break;
+    case 'Normal':
+    default:
+      speedInstruction = "Speaking Rate: Normal. Speak at a natural, conversational pace.";
+      break;
+  }
+
   const ttsPrompt = `
-    Say the following text in a ${voice.style} tone.
-    Language: Detect from text (ensure native pronunciation).
+    Generate audio for the following text.
+    
+    Configuration:
+    - Voice Style: ${voice.style}
+    - ${speedInstruction}
+    - Language: Detect from text (ensure native pronunciation).
     
     Text:
-    ${cleanScript}
+    "${cleanScript}"
   `;
 
   const response = await ai.models.generateContent({
