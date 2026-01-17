@@ -27,10 +27,12 @@ export const extractScriptFromVideo = async (
     FORMAT:
     STYLE: [Video Style, e.g. Vlog, News, Drama]
     
-    [Emotion] Speaker: Line of dialogue...
-    [Emotion] Speaker: Line of dialogue...
+    [Emotion] Line of dialogue...
+    [Emotion] Line of dialogue...
     
     RULES:
+    - CRITICAL: Do NOT include speaker names, labels, or prefixes (e.g. "Narrator:", "Speaker 1:", "Man:").
+    - Output ONLY the spoken text prefixed by the emotion tag.
     - Capture the nuance and timing implicitly by keeping sentences of similar length.
     - Do not output timestamps.
     - Do not hallucinate content for silence.
@@ -87,8 +89,12 @@ export const extractScriptFromUrl = async (
     FORMAT:
     STYLE: [Style of content]
     
-    [Emotion] Line 1...
-    [Emotion] Line 2...
+    [Emotion] Line of dialogue...
+    [Emotion] Line of dialogue...
+
+    RULES:
+    - CRITICAL: Do NOT include speaker names, labels, or prefixes (e.g. "Narrator:", "Speaker 1:", "Man:").
+    - Output ONLY the spoken text prefixed by the emotion tag.
   `;
 
   try {
