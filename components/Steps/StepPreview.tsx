@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Download, RefreshCw, Volume2, VolumeX, Upload, Film, Loader2, Settings2, Zap, Clock, Scissors } from 'lucide-react';
+import { Play, Pause, Download, RefreshCw, Volume2, Film, Loader2, Upload } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { base64ToUint8Array, createWavBlob, blobToUrl } from '../../services/utils';
 import { motion } from 'framer-motion';
@@ -16,20 +16,10 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Audio Graph Refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const playTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
   const [isPlaying, setIsPlaying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [audioUrl, setAudioUrl] = useState<string>('');
-
-  // Audio Editor State
-  const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [audioDelay, setAudioDelay] = useState(0); // seconds
-  const [volume, setVolume] = useState(1.0);
 
   // Initialize Media URLs
   useEffect(() => {
@@ -52,80 +42,19 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
     };
   }, [videoFile, audioBase64]);
 
-  // Initialize Audio Context (Fix for "already associated" error)
-  useEffect(() => {
-    // Only initialize if we have the audio element in the DOM (videoFile exists)
-    if (videoFile && audioRef.current && !audioContextRef.current) {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioContextClass();
-        audioContextRef.current = ctx;
-        
-        try {
-            // Create source only once
-            const source = ctx.createMediaElementSource(audioRef.current);
-            audioSourceNodeRef.current = source;
-            // Connect to speakers so user can hear preview normally
-            source.connect(ctx.destination);
-        } catch (e) {
-            console.error("Audio Graph Setup Error:", e);
-        }
-    }
-
-    // Cleanup on unmount
-    return () => {
-        if (audioContextRef.current) {
-            if (audioContextRef.current.state !== 'closed') {
-                audioContextRef.current.close();
-            }
-            audioContextRef.current = null;
-            audioSourceNodeRef.current = null;
-        }
-        if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
-    };
-  }, [videoFile]);
-
-  // Apply settings whenever they change
-  useEffect(() => {
-    if (audioRef.current) {
-        audioRef.current.playbackRate = playbackRate;
-        audioRef.current.volume = volume;
-    }
-  }, [playbackRate, volume]);
-
-  const togglePlay = async () => {
+  const togglePlay = () => {
     if (videoRef.current && audioRef.current) {
-      if (audioContextRef.current?.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-
       if (isPlaying) {
         videoRef.current.pause();
         audioRef.current.pause();
-        if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
       } else {
-        // Handle Playback with Delay
+        // Reset to start if finished
+        if (videoRef.current.ended) {
+            videoRef.current.currentTime = 0;
+            audioRef.current.currentTime = 0;
+        }
         videoRef.current.play().catch(e => console.warn("Video play error:", e));
-        
-        // Ensure settings are applied before play
-        audioRef.current.playbackRate = playbackRate;
-        audioRef.current.volume = volume;
-        
-        // Sync Logic:
-        // Since we can't easily "shift" the audio start time negatively without seeking,
-        // we'll implement Positive Delay (Audio starts after Video).
-        // If users want negative delay, they usually just trim the start, which is a different tool.
-        // For simplicity, Audio Delay here is 0 to 5s.
-        
-        const delayMs = Math.max(0, audioDelay * 1000);
-        
-        playTimeoutRef.current = setTimeout(() => {
-            if (audioRef.current) {
-                 // Resync check: set audio time to match video time minus delay (if playing from middle)
-                 // This is complex, so we assume "Play" usually starts from current pause point.
-                 // Simple approach: Just play.
-                 audioRef.current.play().catch(e => console.warn("Audio play error:", e));
-            }
-        }, delayMs);
+        audioRef.current.play().catch(e => console.warn("Audio play error:", e));
       }
       setIsPlaying(!isPlaying);
     }
@@ -133,15 +62,14 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
 
   const handleEnded = () => {
     setIsPlaying(false);
-    if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
   };
 
   const handleSeek = () => {
      if (videoRef.current && audioRef.current) {
-         // When user seeks video, sync audio to that spot
-         // Current Video Time - Delay = Audio Time
-         const targetAudioTime = Math.max(0, videoRef.current.currentTime - audioDelay);
-         audioRef.current.currentTime = targetAudioTime;
+         // Sync audio to video time
+         if (Math.abs(videoRef.current.currentTime - audioRef.current.currentTime) > 0.3) {
+             audioRef.current.currentTime = videoRef.current.currentTime;
+         }
      }
   };
 
@@ -158,53 +86,39 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
     if (!videoRef.current || !audioRef.current) return;
     setIsExporting(true);
     setIsPlaying(false);
-    if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
-
-    // Pause everything first
-    videoRef.current.pause();
-    audioRef.current.pause();
-
-    let recorder: MediaRecorder | null = null;
-    let dest: MediaStreamAudioDestinationNode | null = null;
 
     try {
         const videoElement = videoRef.current;
         const audioElement = audioRef.current;
 
-        if (!audioContextRef.current || !audioSourceNodeRef.current) {
-            throw new Error("Audio Context not initialized");
-        }
-        const ctx = audioContextRef.current;
-        if (ctx.state === 'suspended') {
-            await ctx.resume();
-        }
+        // Reset to start
+        videoElement.currentTime = 0;
+        audioElement.currentTime = 0;
 
-        // Apply export settings
-        audioElement.playbackRate = playbackRate;
-        audioElement.volume = volume;
-
-        // Create Mix Destination
-        dest = ctx.createMediaStreamDestination();
-        audioSourceNodeRef.current.connect(dest);
-        
-        // Capture Video
-        const videoElAny = videoElement as any;
-        const videoStream = videoElAny.captureStream ? videoElAny.captureStream() : 
-                            videoElAny.mozCaptureStream ? videoElAny.mozCaptureStream() : null;
+        // Simple Stream Capture (Note: A true server-side merge is better for quality, 
+        // but this client-side hack works for demos)
+        const videoStream = (videoElement as any).captureStream ? (videoElement as any).captureStream() : 
+                            (videoElement as any).mozCaptureStream ? (videoElement as any).mozCaptureStream() : null;
         
         if (!videoStream) {
-            alert("Browser not supported for capture. Use Chrome/Firefox.");
+            alert("Export not supported in this browser. Please use Chrome/Firefox or download the audio file.");
             setIsExporting(false);
-            if (dest) audioSourceNodeRef.current.disconnect(dest);
             return;
         }
 
+        // Create a new AudioContext to capture the audio element output
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = ctx.createMediaElementSource(audioElement);
+        const dest = ctx.createMediaStreamDestination();
+        source.connect(dest);
+        
+        // Combine video track with new audio track
         const combinedStream = new MediaStream([
             ...videoStream.getVideoTracks(),
             ...dest.stream.getAudioTracks()
         ]);
 
-        recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+        const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
         const chunks: Blob[] = [];
 
         recorder.ondataavailable = (e) => {
@@ -220,39 +134,26 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
             a.click();
             URL.revokeObjectURL(url);
             
-            // Cleanup
-            if (dest && audioSourceNodeRef.current) {
-                audioSourceNodeRef.current.disconnect(dest);
-            }
+            source.disconnect();
+            ctx.close();
             setIsExporting(false);
+            setIsPlaying(false);
         };
 
-        // Reset to start
-        videoElement.currentTime = 0;
-        audioElement.currentTime = 0;
-        
         recorder.start();
-        videoElement.play();
+        
+        // Play both to record
+        await videoElement.play();
+        await audioElement.play();
 
-        // Apply Delay Logic during export
-        const delayMs = Math.max(0, audioDelay * 1000);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        audioElement.play();
-
-        // Wait for video end
         videoElement.onended = () => {
-             if (recorder && recorder.state !== 'inactive') {
-                 recorder.stop();
-             }
-             videoElement.onended = handleEnded; 
+             recorder.stop();
+             videoElement.onended = handleEnded; // reset handler
         };
 
     } catch (e) {
         console.error("Export failed:", e);
         alert("Export failed. Please try downloading audio only.");
-        if (dest && audioSourceNodeRef.current) {
-            try { audioSourceNodeRef.current.disconnect(dest); } catch (err) {}
-        }
         setIsExporting(false);
     }
   };
@@ -272,19 +173,19 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
       className="w-full max-w-6xl mx-auto space-y-6"
     >
       <div className="text-center space-y-2">
-        <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight">Studio Mixer</h2>
-        <p className="text-zinc-400 text-sm md:text-lg font-light">Preview, edit timing, and export.</p>
+        <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight">Studio Preview</h2>
+        <p className="text-zinc-400 text-sm md:text-lg font-light">Review the final result and export.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Preview Player */}
-        <div className="lg:col-span-2 space-y-4">
-            <div className="bg-black rounded-3xl overflow-hidden relative shadow-2xl group min-h-[300px] md:min-h-[450px] flex items-center justify-center ring-1 ring-white/5">
+        <div className="lg:col-span-2">
+            <div className="bg-black rounded-3xl overflow-hidden relative shadow-2xl group min-h-[300px] md:min-h-[450px] flex items-center justify-center ring-1 ring-white/5 aspect-video">
             {isExporting && (
                 <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm">
                     <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
                     <h3 className="text-xl font-bold text-white">Rendering Video...</h3>
-                    <p className="text-zinc-400 text-sm">Merging Audio & Video with adjustments...</p>
+                    <p className="text-zinc-400 text-sm">Recording real-time playback...</p>
                 </div>
             )}
 
@@ -315,18 +216,13 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
                         playsInline
                         crossOrigin="anonymous"
                         onEnded={handleEnded}
-                        onSeeked={handleSeek}
-                        onPlay={() => {
-                            if (!isPlaying && !isExporting) togglePlay();
-                        }}
-                        onPause={() => {
-                            if (isPlaying && !isExporting) togglePlay();
-                        }}
+                        onTimeUpdate={handleSeek}
+                        onClick={togglePlay}
                     />
                     <audio ref={audioRef} src={audioUrl} crossOrigin="anonymous" />
 
                     {/* Overlay Controls */}
-                    <div className={`absolute inset-0 bg-black/40 transition-all duration-300 flex items-center justify-center backdrop-blur-[2px] ${isPlaying ? 'opacity-0 group-hover:opacity-100 pointer-events-none' : 'opacity-100'}`}>
+                    <div className={`absolute inset-0 bg-black/40 transition-all duration-300 flex items-center justify-center backdrop-blur-[2px] ${isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
                         <button 
                             onClick={togglePlay}
                             disabled={isExporting}
@@ -338,78 +234,6 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
                 </>
             )}
             </div>
-            
-            {/* Audio Editor / Mixer Panel */}
-            {videoFile && (
-                <div className="bg-zinc-900/60 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-6">
-                        <Settings2 className="w-5 h-5 text-primary" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Audio Mixer</h3>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* Speed Control */}
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs text-zinc-400 font-medium flex items-center gap-2">
-                                    <Zap className="w-3.5 h-3.5" /> Speed
-                                </label>
-                                <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">{playbackRate.toFixed(2)}x</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="0.5" 
-                                max="1.5" 
-                                step="0.05"
-                                value={playbackRate}
-                                onChange={(e) => setPlaybackRate(parseFloat(e.target.value))}
-                                className="w-full accent-primary h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <p className="text-[10px] text-zinc-500">Adjust if audio is too short/long.</p>
-                        </div>
-
-                        {/* Delay Control */}
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs text-zinc-400 font-medium flex items-center gap-2">
-                                    <Clock className="w-3.5 h-3.5" /> Start Delay
-                                </label>
-                                <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">+{audioDelay.toFixed(2)}s</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="5" 
-                                step="0.1"
-                                value={audioDelay}
-                                onChange={(e) => setAudioDelay(parseFloat(e.target.value))}
-                                className="w-full accent-primary h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <p className="text-[10px] text-zinc-500">Sync lip movement.</p>
-                        </div>
-
-                        {/* Volume Control */}
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs text-zinc-400 font-medium flex items-center gap-2">
-                                    <Volume2 className="w-3.5 h-3.5" /> Volume
-                                </label>
-                                <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">{Math.round(volume * 100)}%</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="1" 
-                                step="0.05"
-                                value={volume}
-                                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                                className="w-full accent-primary h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
-                            />
-                             <p className="text-[10px] text-zinc-500">AI Voice volume.</p>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
 
         {/* Sidebar Controls */}
@@ -417,7 +241,7 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
            <div className="bg-zinc-900/40 backdrop-blur-2xl ring-1 ring-white/5 rounded-3xl p-8 shadow-xl">
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <Download className="w-5 h-5 text-primary" />
-                Export
+                Export Options
               </h3>
               
               <div className="space-y-3">
@@ -437,25 +261,21 @@ export const StepPreview: React.FC<StepPreviewProps> = ({ videoFile, audioBase64
                     className={`w-full py-3.5 text-base ${!videoFile ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                     <Film className="w-5 h-5 mr-2" />
-                    {isExporting ? 'Rendering...' : 'Export Video'}
+                    {isExporting ? 'Recording...' : 'Export Video'}
                 </Button>
               </div>
            </div>
 
            <div className="bg-black/20 ring-1 ring-white/5 rounded-3xl p-6">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Project Stats</h3>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Project Status</h3>
               <ul className="space-y-4 text-sm">
                  <li className="flex justify-between text-zinc-300">
                     <span className="text-zinc-500">Source</span>
                     <span className="font-medium bg-zinc-800 px-2 py-0.5 rounded">{videoFile ? 'Video File' : 'Pending'}</span>
                  </li>
                  <li className="flex justify-between text-zinc-300">
-                    <span className="text-zinc-500">Voice Speed</span>
-                    <span className="text-primary font-medium">{playbackRate}x</span>
-                 </li>
-                 <li className="flex justify-between text-zinc-300">
-                    <span className="text-zinc-500">Sync Offset</span>
-                    <span className="text-primary font-medium">+{audioDelay}s</span>
+                    <span className="text-zinc-500">Audio Status</span>
+                    <span className="text-primary font-medium">{audioBase64 ? 'Generated' : 'Pending'}</span>
                  </li>
               </ul>
            </div>

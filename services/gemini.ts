@@ -1,22 +1,12 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceConfig } from "../types";
-
-// Helper to get AI instance safely
-const getAI = () => {
-  // @ts-ignore - Handle potential process not defined in some browser environments
-  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
-  if (!apiKey) {
-    console.error("API Key is missing from process.env.API_KEY");
-  }
-  return new GoogleGenAI({ apiKey: apiKey || 'MISSING_KEY' });
-};
 
 export const extractScriptFromVideo = async (
   videoBase64: string,
   mimeType: string,
   targetLanguage: string
 ): Promise<string> => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     You are an expert dubbing script writer. Your task is to translate the spoken dialogue from this video into ${targetLanguage}.
 
@@ -38,7 +28,7 @@ export const extractScriptFromVideo = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3-flash-preview',
     contents: {
       parts: [
         {
@@ -59,7 +49,7 @@ export const extractScriptFromUrl = async (
   url: string,
   targetLanguage: string
 ): Promise<string> => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     I need the dubbing script for the video at: ${url}
     
@@ -89,14 +79,30 @@ export const extractScriptFromUrl = async (
     }
   });
 
-  return response.text || "No script extracted from URL.";
+  let text = response.text || "No script extracted from URL.";
+
+  // Extract grounding chunks and append sources
+  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (groundingChunks) {
+    const sources = groundingChunks
+      .map((chunk: any) => chunk.web?.uri)
+      .filter((uri: string) => uri)
+      .map((uri: string) => `[Source: ${uri}]`)
+      .join('\n');
+    
+    if (sources) {
+      text += `\n\n${sources}`;
+    }
+  }
+
+  return text;
 };
 
 export const generateVoiceOver = async (
   script: string,
   voice: VoiceConfig
 ): Promise<string> => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   if (!script || script.trim() === "") {
       throw new Error("Script is empty. Cannot generate voiceover.");
@@ -128,7 +134,7 @@ export const generateVoiceOver = async (
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ parts: [{ text: ttsPrompt }] }],
     config: {
-      responseModalities: ['AUDIO'], 
+      responseModalities: [Modality.AUDIO], 
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: voice.id },
