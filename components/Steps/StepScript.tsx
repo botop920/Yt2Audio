@@ -36,7 +36,7 @@ export const StepScript: React.FC<StepScriptProps> = ({ videoFile, videoUrl, tar
       } catch (err: any) {
         console.error("Script extraction failed", err);
         setError(err.message || "An unexpected error occurred.");
-        setScript("(Error extracting script. Please try again or type manually here.)");
+        setScript("[Neutral] (Error extracting script. Please try again or type manually here.)");
       } finally {
         setLoading(false);
       }
@@ -110,7 +110,7 @@ export const StepScript: React.FC<StepScriptProps> = ({ videoFile, videoUrl, tar
               onChange={(e) => setScript(e.target.value)}
               className="w-full flex-1 bg-transparent p-4 md:p-8 text-zinc-200 font-sans text-base leading-relaxed focus:outline-none resize-none min-h-[50vh] md:min-h-[450px]"
               spellCheck={false}
-              placeholder="Script will appear here..."
+              placeholder="Script will appear here ([Emotion] text...)"
             />
             
             <div className="p-4 md:p-6 border-t border-white/5 bg-zinc-900/50 backdrop-blur-md rounded-b-3xl">

@@ -13,11 +13,29 @@ interface StepVoiceProps {
   onBack: () => void;
 }
 
-// Simple Script Display
+// Advanced Script Display with Highlighted Emotions
 const ScriptDisplay: React.FC<{ text: string }> = ({ text }) => {
+  // Regex to capture [Emotion] tags
+  const parts = text.split(/(\[.*?\])/g);
+
   return (
     <p className="text-zinc-300 text-sm md:text-base leading-relaxed font-light whitespace-pre-wrap">
-      {text}
+      {parts.map((part, index) => {
+        if (part.startsWith('[') && part.endsWith(']')) {
+          // Clean the brackets for display if desired, or keep them. 
+          // Let's keep them but style them nicely.
+          const emotion = part.replace(/[\[\]]/g, '');
+          return (
+            <span 
+              key={index} 
+              className="inline-flex items-center px-1.5 py-0.5 mx-1 rounded-md bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider border border-primary/20 align-middle transform -translate-y-px select-none"
+            >
+              {emotion}
+            </span>
+          );
+        }
+        return <span key={index}>{part}</span>;
+      })}
     </p>
   );
 };

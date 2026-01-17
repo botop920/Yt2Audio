@@ -24,15 +24,18 @@ export const extractScriptFromVideo = async (
     INSTRUCTIONS:
     1. Listen to the audio content carefully.
     2. Translate the spoken dialogue strictly into ${targetLanguage}.
-    3. CRITICAL: If the audio is in a different language (e.g., Hindi, Urdu, English), you MUST translate it to ${targetLanguage}.
-    4. CRITICAL: Do NOT use Romanized/Transliterated text (e.g. do not write Bengali in English letters). Use the native script of ${targetLanguage} only.
-    5. Output ONLY the raw spoken text. 
-       - No "Narrator:" or Speaker labels.
-       - No [Emotion] tags.
-       - No "Scene:" descriptions.
-       - No timestamps.
-       - No "Translation:" headers.
-    6. Combine short fragments into coherent, natural sentences suitable for a voiceover.
+    3. CRITICAL: If the audio is in a different language, translate it to ${targetLanguage}.
+    4. CRITICAL: Do NOT use Romanized/Transliterated text. Use the native script of ${targetLanguage} only.
+    
+    FORMAT:
+    [Emotion] Spoken text...
+    [Emotion] Spoken text...
+
+    RULES:
+    - START every sentence with an emotion tag in English (e.g. [Happy], [Sad], [Serious], [Excited]).
+    - Do NOT use speaker labels (e.g. "Narrator:", "Man:").
+    - Do NOT output timestamps.
+    - Combine short fragments into coherent sentences.
   `;
 
   try {
@@ -50,8 +53,8 @@ export const extractScriptFromVideo = async (
           ],
         },
         config: {
-          systemInstruction: `You are a strict translator. You only output text in ${targetLanguage}. You never output Romanized text for Asian languages.`,
-          thinkingConfig: { thinkingBudget: 1024 } // Allow some thinking for better translation
+          systemInstruction: `You are a strict translator. You only output text in ${targetLanguage} prefixed by [Emotion] tags. You never output Romanized text.`,
+          thinkingConfig: { thinkingBudget: 1024 }
         }
       });
       
@@ -81,13 +84,17 @@ export const extractScriptFromUrl = async (
     TARGET LANGUAGE: ${targetLanguage}
     
     INSTRUCTIONS:
-    1. Use Google Search to find the transcript or content of this video.
-    2. Translate the content strictly into ${targetLanguage}.
-    3. CRITICAL: Do NOT use Romanized/Transliterated text. Use the native script of ${targetLanguage}.
-    4. Output ONLY the raw spoken text. 
-       - No "Narrator:" or Speaker labels.
-       - No [Emotion] tags.
-       - No timestamps.
+    1. Find the transcript or content.
+    2. Translate it strictly into ${targetLanguage}.
+    3. CRITICAL: Do NOT use Romanized text. Use native script.
+    
+    FORMAT:
+    [Emotion] Spoken text...
+    [Emotion] Spoken text...
+    
+    RULES:
+    - Include [Emotion] tags at the start of lines.
+    - No Speaker names.
   `;
 
   try {
@@ -106,16 +113,16 @@ export const extractScriptFromUrl = async (
       let text = response.text || "";
       
       if (!text || text.length < 50) {
-          return `(Could not automatically extract dialogue. Please type the ${targetLanguage} script here manually.)\n\n${text}`;
+          return `[Neutral] (Could not automatically extract dialogue. Please type the ${targetLanguage} script here manually.)\n\n${text}`;
       }
 
-      // Clean up any potential markdown or headers that might have slipped through
+      // Clean up markdown
       text = text.replace(/^#.*\n/gm, '').replace(/\*\*.*?\*\*/g, '').trim();
 
       return text;
   } catch (err) {
       console.error("URL Extraction Error:", err);
-      throw new Error("Failed to extract script from URL. The video might be restricted or not indexed.");
+      throw new Error("Failed to extract script from URL.");
   }
 };
 
@@ -129,14 +136,19 @@ export const generateVoiceOver = async (
       throw new Error("Script is empty. Cannot generate voiceover.");
   }
 
-  // Since we stripped tags from the UI, we just use the raw script.
-  // We inject the voice style into the prompt to guide the TTS model.
+  // Strip emotion tags for the TTS engine so it doesn't read "[Happy]" aloud
+  // regex removes [Anything] and (Anything)
+  const cleanScript = script
+    .replace(/\[.*?\]/g, '') 
+    .replace(/\(.*?\)/g, '')
+    .trim();
+
   const ttsPrompt = `
     Say the following text in a ${voice.style} tone.
     Language: Detect from text (ensure native pronunciation).
     
     Text:
-    ${script}
+    ${cleanScript}
   `;
 
   const response = await ai.models.generateContent({
