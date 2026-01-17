@@ -13,27 +13,11 @@ interface StepVoiceProps {
   onBack: () => void;
 }
 
-// Helper to render script with colored tags
+// Simple Script Display
 const ScriptDisplay: React.FC<{ text: string }> = ({ text }) => {
-  // Hide STYLE header from visual display, keep Emotions
-  const cleanText = text
-    .replace(/STYLE:.*\n?/i, '')
-    .trim();
-  
-  const parts = cleanText.split(/(\[.*?\]|\(.*?\))/g);
   return (
-    <p className="text-zinc-300 text-sm md:text-base leading-relaxed font-light">
-      {parts.map((part, i) => {
-        // Highlight emotion tags like [Happy], [Surprised]
-        if (part.match(/^\[.*?\]$/) || part.match(/^\(.*?\)$/)) {
-          return (
-            <span key={i} className="text-purple-400 font-medium font-mono text-xs mx-1 px-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 inline-block transform translate-y-[-1px]">
-              {part.replace('[', '').replace(']', '')}
-            </span>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}
+    <p className="text-zinc-300 text-sm md:text-base leading-relaxed font-light whitespace-pre-wrap">
+      {text}
     </p>
   );
 };
@@ -277,7 +261,7 @@ export const StepVoice: React.FC<StepVoiceProps> = ({ script, onAudioGenerated, 
                  {generatedAudio && <span className="text-[10px] md:text-xs text-green-400 font-medium flex items-center gap-1"><Sparkles className="w-3 h-3"/> Ready</span>}
               </div>
               
-              {/* Script Viewer with Highlights */}
+              {/* Script Viewer */}
               <div className="flex-1 bg-black/40 rounded-2xl ring-1 ring-white/5 p-4 md:p-6 mb-6 relative overflow-hidden flex flex-col min-h-[150px] max-h-[300px]">
                 <div className="absolute top-4 right-4 z-10 opacity-50">
                    <Quote className="w-6 h-6 text-zinc-800 fill-zinc-800" />

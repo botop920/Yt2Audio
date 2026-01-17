@@ -36,7 +36,7 @@ export const StepScript: React.FC<StepScriptProps> = ({ videoFile, videoUrl, tar
       } catch (err: any) {
         console.error("Script extraction failed", err);
         setError(err.message || "An unexpected error occurred.");
-        setScript("STYLE: Error\n\n[Neutral] Could not extract script. You can type manually here.");
+        setScript("(Error extracting script. Please try again or type manually here.)");
       } finally {
         setLoading(false);
       }

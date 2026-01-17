@@ -17,25 +17,22 @@ export const extractScriptFromVideo = async (
   const ai = getAiClient();
   
   const prompt = `
-    You are an expert dubbing script writer.
+    You are a professional translator and dubbing script writer.
     
-    TASK:
-    1. Listen to the video audio carefully.
-    2. Transcribe the spoken dialogue exactly.
-    3. Translate it to ${targetLanguage}.
+    TARGET LANGUAGE: ${targetLanguage}
     
-    FORMAT:
-    STYLE: [Video Style, e.g. Vlog, News, Drama]
-    
-    [Emotion] Line of dialogue...
-    [Emotion] Line of dialogue...
-    
-    RULES:
-    - CRITICAL: Do NOT include speaker names, labels, or prefixes (e.g. "Narrator:", "Speaker 1:", "Man:").
-    - Output ONLY the spoken text prefixed by the emotion tag.
-    - Capture the nuance and timing implicitly by keeping sentences of similar length.
-    - Do not output timestamps.
-    - Do not hallucinate content for silence.
+    INSTRUCTIONS:
+    1. Listen to the audio content carefully.
+    2. Translate the spoken dialogue strictly into ${targetLanguage}.
+    3. CRITICAL: If the audio is in a different language (e.g., Hindi, Urdu, English), you MUST translate it to ${targetLanguage}.
+    4. CRITICAL: Do NOT use Romanized/Transliterated text (e.g. do not write Bengali in English letters). Use the native script of ${targetLanguage} only.
+    5. Output ONLY the raw spoken text. 
+       - No "Narrator:" or Speaker labels.
+       - No [Emotion] tags.
+       - No "Scene:" descriptions.
+       - No timestamps.
+       - No "Translation:" headers.
+    6. Combine short fragments into coherent, natural sentences suitable for a voiceover.
   `;
 
   try {
@@ -52,13 +49,17 @@ export const extractScriptFromVideo = async (
             { text: prompt },
           ],
         },
+        config: {
+          systemInstruction: `You are a strict translator. You only output text in ${targetLanguage}. You never output Romanized text for Asian languages.`,
+          thinkingConfig: { thinkingBudget: 1024 } // Allow some thinking for better translation
+        }
       });
       
       if (!response.text) {
           throw new Error("Model returned empty text.");
       }
 
-      return response.text;
+      return response.text.trim();
   } catch (err: any) {
       console.error("Video Extraction Error:", err);
       if (err.message?.includes("413")) {
@@ -74,27 +75,19 @@ export const extractScriptFromUrl = async (
 ): Promise<string> => {
   const ai = getAiClient();
   
-  // Robust prompt for URL grounding
   const prompt = `
     I need a dubbing script for the video found at this URL: ${url}
     
-    Target Language: ${targetLanguage}
+    TARGET LANGUAGE: ${targetLanguage}
     
     INSTRUCTIONS:
-    1. Use Google Search to find the transcript, caption text, or a detailed summary of the dialogue for this video.
-    2. If exact dialogue is found, translate it.
-    3. If only a summary is found, reconstruct a plausible script based on the summary.
-    4. Output strictly in the requested format.
-    
-    FORMAT:
-    STYLE: [Style of content]
-    
-    [Emotion] Line of dialogue...
-    [Emotion] Line of dialogue...
-
-    RULES:
-    - CRITICAL: Do NOT include speaker names, labels, or prefixes (e.g. "Narrator:", "Speaker 1:", "Man:").
-    - Output ONLY the spoken text prefixed by the emotion tag.
+    1. Use Google Search to find the transcript or content of this video.
+    2. Translate the content strictly into ${targetLanguage}.
+    3. CRITICAL: Do NOT use Romanized/Transliterated text. Use the native script of ${targetLanguage}.
+    4. Output ONLY the raw spoken text. 
+       - No "Narrator:" or Speaker labels.
+       - No [Emotion] tags.
+       - No timestamps.
   `;
 
   try {
@@ -112,24 +105,12 @@ export const extractScriptFromUrl = async (
 
       let text = response.text || "";
       
-      // Fallback message if search failed to yield text
       if (!text || text.length < 50) {
-          return `STYLE: Unknown\n\n[Neutral] (Could not extract exact dialogue from URL. Please manually type the script here based on the video.)\n\n${text}`;
+          return `(Could not automatically extract dialogue. Please type the ${targetLanguage} script here manually.)\n\n${text}`;
       }
 
-      // Append sources
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      if (groundingChunks) {
-        const sources = groundingChunks
-          .map((chunk: any) => chunk.web?.uri)
-          .filter((uri: string) => uri)
-          .map((uri: string) => `[Source: ${uri}]`)
-          .join('\n');
-        
-        if (sources) {
-          text += `\n\n${sources}`;
-        }
-      }
+      // Clean up any potential markdown or headers that might have slipped through
+      text = text.replace(/^#.*\n/gm, '').replace(/\*\*.*?\*\*/g, '').trim();
 
       return text;
   } catch (err) {
@@ -148,26 +129,14 @@ export const generateVoiceOver = async (
       throw new Error("Script is empty. Cannot generate voiceover.");
   }
 
-  const styleMatch = script.match(/STYLE:\s*(.*)/i);
-  const detectedStyle = styleMatch ? styleMatch[1].trim() : "Neutral";
-
-  let ttsReadyScript = script
-    .replace(/STYLE:.*\n?/i, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\(.*?\)/g, '')
-    .trim();
-
-  // Guard against empty script after cleaning
-  if (!ttsReadyScript) {
-      ttsReadyScript = "Audio generation test.";
-  }
-
+  // Since we stripped tags from the UI, we just use the raw script.
+  // We inject the voice style into the prompt to guide the TTS model.
   const ttsPrompt = `
-    Speak the following text in a ${detectedStyle} tone.
-    Speak naturally and clearly.
+    Say the following text in a ${voice.style} tone.
+    Language: Detect from text (ensure native pronunciation).
     
     Text:
-    ${ttsReadyScript}
+    ${script}
   `;
 
   const response = await ai.models.generateContent({
