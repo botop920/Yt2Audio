@@ -1,0 +1,5 @@
+{
+  "name": "VoxForge AI Studio",
+  "description": "Enterprise-grade AI video dubbing studio using Gemini 2.5. Extract scripts, generate emotional voiceovers, and merge audio seamlessly.",
+  "requestFramePermissions": []
+}
