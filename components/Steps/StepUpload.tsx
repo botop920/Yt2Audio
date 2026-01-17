@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Youtube, FileVideo, ArrowRight, Link, Globe } from 'lucide-react';
+import { Upload, Youtube, FileVideo, ArrowRight, Link, Globe, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { motion } from 'framer-motion';
 import { SUPPORTED_LANGUAGES } from '../../types';
@@ -9,10 +9,14 @@ interface StepUploadProps {
   onUrlSelect: (url: string, lang: string) => void;
 }
 
+// 20MB limit for inline Gemini API usage
+const MAX_FILE_SIZE = 20 * 1024 * 1024; 
+
 export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelect }) => {
   const [activeTab, setActiveTab] = useState<'youtube' | 'upload'>('youtube');
   const [urlInput, setUrlInput] = useState('');
   const [selectedLang, setSelectedLang] = useState('en');
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -43,14 +47,20 @@ export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelec
   };
 
   const handleFile = (file: File) => {
-    if (file.type.startsWith('video/')) {
-      onFileSelect(file, selectedLang);
-    } else {
-      alert("Please upload a valid video file.");
+    setError(null);
+    if (!file.type.startsWith('video/')) {
+      setError("Please upload a valid video file.");
+      return;
     }
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max size is 20MB for inline processing.`);
+      return;
+    }
+    onFileSelect(file, selectedLang);
   };
 
   const handleUrlSubmit = () => {
+    setError(null);
     if (urlInput.trim().length > 0) {
       onUrlSelect(urlInput, selectedLang);
     }
@@ -103,7 +113,7 @@ export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelec
         {/* Tabs */}
         <div className="bg-black/20 rounded-xl p-1 flex mb-6 md:mb-8">
             <button
-            onClick={() => setActiveTab('youtube')}
+            onClick={() => { setActiveTab('youtube'); setError(null); }}
             className={`flex-1 py-3 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ${
                 activeTab === 'youtube' 
                 ? 'bg-zinc-800 text-white shadow-lg' 
@@ -114,7 +124,7 @@ export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelec
             Link
             </button>
             <button
-            onClick={() => setActiveTab('upload')}
+            onClick={() => { setActiveTab('upload'); setError(null); }}
             className={`flex-1 py-3 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all duration-300 ${
                 activeTab === 'upload' 
                 ? 'bg-zinc-800 text-white shadow-lg' 
@@ -125,6 +135,14 @@ export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelec
             Upload
             </button>
         </div>
+
+        {/* Error Message */}
+        {error && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <p className="text-sm font-medium">{error}</p>
+            </div>
+        )}
 
         {/* Content Area */}
         <div className="min-h-[250px] md:min-h-[300px] relative">
@@ -175,7 +193,7 @@ export const StepUpload: React.FC<StepUploadProps> = ({ onFileSelect, onUrlSelec
                    <Upload className="w-6 h-6 md:w-8 md:h-8 text-zinc-400" />
                 </div>
                 <h3 className="text-lg md:text-xl font-semibold text-white mb-2">Drag & drop video</h3>
-                <p className="text-xs md:text-sm text-zinc-500 mb-6 font-light">MP4, MOV, WebM • Max 100MB</p>
+                <p className="text-xs md:text-sm text-zinc-500 mb-6 font-light">MP4, MOV, WebM • Max 20MB</p>
                 <input 
                 type="file" 
                 ref={fileInputRef} 

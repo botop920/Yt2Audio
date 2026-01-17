@@ -1,127 +1,161 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { VoiceConfig } from "../types";
 
+const getAiClient = () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("API Key is missing. Please check your Vercel Environment Variables.");
+    }
+    return new GoogleGenAI({ apiKey });
+};
+
 export const extractScriptFromVideo = async (
   videoBase64: string,
   mimeType: string,
   targetLanguage: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiClient();
+  
   const prompt = `
-    You are an expert dubbing script writer. Your task is to translate the spoken dialogue from this video into ${targetLanguage}.
-
-    CRITICAL INSTRUCTIONS:
-    1. **Strict Fidelity**: Translate ONLY what is actually spoken.
-    2. **Match Duration**: The translated sentences should take roughly the same amount of time to speak as the original. Do not be overly concise if the original speaker talks slowly or at length.
-    3. **Natural Flow**: Use a conversational, human tone.
-    4. **No Hallucinations**: Do not invent dialogue for silent parts.
-
-    Output Structure:
-    1. Identify the global "Style" (e.g., Documentary, Vlog, Dramatic).
-    2. List the dialogue line-by-line with [Emotion] tags.
-
-    Output Format:
-    STYLE: [Insert Style Here]
+    You are an expert dubbing script writer.
     
-    [Emotion] Translated Line 1
-    [Emotion] Translated Line 2
+    TASK:
+    1. Listen to the video audio carefully.
+    2. Transcribe the spoken dialogue exactly.
+    3. Translate it to ${targetLanguage}.
+    
+    FORMAT:
+    STYLE: [Video Style, e.g. Vlog, News, Drama]
+    
+    [Emotion] Speaker: Line of dialogue...
+    [Emotion] Speaker: Line of dialogue...
+    
+    RULES:
+    - Capture the nuance and timing implicitly by keeping sentences of similar length.
+    - Do not output timestamps.
+    - Do not hallucinate content for silence.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: videoBase64,
-          },
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: videoBase64,
+              },
+            },
+            { text: prompt },
+          ],
         },
-        { text: prompt },
-      ],
-    },
-  });
+      });
+      
+      if (!response.text) {
+          throw new Error("Model returned empty text.");
+      }
 
-  return response.text || "No script extracted.";
+      return response.text;
+  } catch (err: any) {
+      console.error("Video Extraction Error:", err);
+      if (err.message?.includes("413")) {
+          throw new Error("Video file is too large for AI processing. Please use a smaller file (under 20MB).");
+      }
+      throw err;
+  }
 };
 
 export const extractScriptFromUrl = async (
   url: string,
   targetLanguage: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiClient();
+  
+  // Robust prompt for URL grounding
   const prompt = `
-    I need the dubbing script for the video at: ${url}
+    I need a dubbing script for the video found at this URL: ${url}
     
     Target Language: ${targetLanguage}
-
-    CRITICAL INSTRUCTIONS:
-    1. Extract ONLY the spoken dialogue.
-    2. Translate to ${targetLanguage} keeping it casual and natural.
-    3. **DURATION MATCHING**: Ensure the translation length matches the original speech duration. If the original is wordy, the translation should be wordy. If short, keep it short.
-    4. Do not add intro/outro text.
-
-    Output Format:
-    STYLE: [Insert Style Here]
-
+    
+    INSTRUCTIONS:
+    1. Use Google Search to find the transcript, caption text, or a detailed summary of the dialogue for this video.
+    2. If exact dialogue is found, translate it.
+    3. If only a summary is found, reconstruct a plausible script based on the summary.
+    4. Output strictly in the requested format.
+    
+    FORMAT:
+    STYLE: [Style of content]
+    
     [Emotion] Line 1...
+    [Emotion] Line 2...
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [
-        { text: prompt },
-      ],
-    },
-    config: {
-      tools: [{ googleSearch: {} }],
-    }
-  });
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { text: prompt },
+          ],
+        },
+        config: {
+          tools: [{ googleSearch: {} }],
+        }
+      });
 
-  let text = response.text || "No script extracted from URL.";
+      let text = response.text || "";
+      
+      // Fallback message if search failed to yield text
+      if (!text || text.length < 50) {
+          return `STYLE: Unknown\n\n[Neutral] (Could not extract exact dialogue from URL. Please manually type the script here based on the video.)\n\n${text}`;
+      }
 
-  // Extract grounding chunks and append sources
-  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-  if (groundingChunks) {
-    const sources = groundingChunks
-      .map((chunk: any) => chunk.web?.uri)
-      .filter((uri: string) => uri)
-      .map((uri: string) => `[Source: ${uri}]`)
-      .join('\n');
-    
-    if (sources) {
-      text += `\n\n${sources}`;
-    }
+      // Append sources
+      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (groundingChunks) {
+        const sources = groundingChunks
+          .map((chunk: any) => chunk.web?.uri)
+          .filter((uri: string) => uri)
+          .map((uri: string) => `[Source: ${uri}]`)
+          .join('\n');
+        
+        if (sources) {
+          text += `\n\n${sources}`;
+        }
+      }
+
+      return text;
+  } catch (err) {
+      console.error("URL Extraction Error:", err);
+      throw new Error("Failed to extract script from URL. The video might be restricted or not indexed.");
   }
-
-  return text;
 };
 
 export const generateVoiceOver = async (
   script: string,
   voice: VoiceConfig
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAiClient();
   
   if (!script || script.trim() === "") {
       throw new Error("Script is empty. Cannot generate voiceover.");
   }
 
-  // 1. Extract Style
   const styleMatch = script.match(/STYLE:\s*(.*)/i);
   const detectedStyle = styleMatch ? styleMatch[1].trim() : "Neutral";
 
-  // 2. Process Script for TTS:
-  // - Remove STYLE header
-  // - Remove [Emotion] tags from spoken text entirely so they aren't read aloud.
   let ttsReadyScript = script
     .replace(/STYLE:.*\n?/i, '')
-    .replace(/\[.*?\]/g, '') // Remove all [Tags]
-    .replace(/\(.*?\)/g, '') // Remove all (Tags)
+    .replace(/\[.*?\]/g, '')
+    .replace(/\(.*?\)/g, '')
     .trim();
 
-  // 3. Construct prompt
+  // Guard against empty script after cleaning
+  if (!ttsReadyScript) {
+      ttsReadyScript = "Audio generation test.";
+  }
+
   const ttsPrompt = `
     Speak the following text in a ${detectedStyle} tone.
     Speak naturally and clearly.
@@ -146,7 +180,7 @@ export const generateVoiceOver = async (
   const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   
   if (!base64Audio) {
-    throw new Error("Failed to generate audio: No audio data returned from API.");
+    throw new Error("Failed to generate audio. Please try again.");
   }
 
   return base64Audio;

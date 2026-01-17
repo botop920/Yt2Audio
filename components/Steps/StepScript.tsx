@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Wand2, Edit3, ArrowRight } from 'lucide-react';
+import { Wand2, Edit3, ArrowRight, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { extractScriptFromVideo, extractScriptFromUrl } from '../../services/gemini';
 import { fileToBase64 } from '../../services/utils';
@@ -16,28 +16,34 @@ interface StepScriptProps {
 export const StepScript: React.FC<StepScriptProps> = ({ videoFile, videoUrl, targetLanguage, onConfirmScript, onBack }) => {
   const [script, setScript] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const processContent = async () => {
       try {
         setLoading(true);
+        setError(null);
+        let extracted = '';
+        
         if (videoFile) {
             const base64 = await fileToBase64(videoFile);
-            const extracted = await extractScriptFromVideo(base64, videoFile.type, targetLanguage);
-            setScript(extracted);
+            extracted = await extractScriptFromVideo(base64, videoFile.type, targetLanguage);
         } else if (videoUrl) {
-            const extracted = await extractScriptFromUrl(videoUrl, targetLanguage);
-            setScript(extracted);
+            extracted = await extractScriptFromUrl(videoUrl, targetLanguage);
         }
-      } catch (error) {
-        console.error("Script extraction failed", error);
-        setScript("Error extracting script. Please try again or type manually.");
+        
+        setScript(extracted);
+      } catch (err: any) {
+        console.error("Script extraction failed", err);
+        setError(err.message || "An unexpected error occurred.");
+        setScript("STYLE: Error\n\n[Neutral] Could not extract script. You can type manually here.");
       } finally {
         setLoading(false);
       }
     };
 
-    if (!script) {
+    // Only process if script is empty to avoid re-fetching on small renders
+    if (!script && (videoFile || videoUrl)) {
         processContent();
     } else {
         setLoading(false);
@@ -85,10 +91,18 @@ export const StepScript: React.FC<StepScriptProps> = ({ videoFile, videoUrl, tar
                     <Wand2 className="w-3.5 h-3.5" />
                     <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider">Gemini 2.5 AI</span>
                 </div>
-                <div className="text-xs text-zinc-500 flex items-center gap-1">
-                    <Edit3 className="w-3 h-3" />
-                    <span>Editable</span>
-                </div>
+                {error && (
+                    <div className="flex items-center gap-2 text-red-400 bg-red-500/10 px-3 py-1.5 rounded-full ring-1 ring-red-500/20">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span className="text-[10px] md:text-xs font-bold">{error}</span>
+                    </div>
+                )}
+                {!error && (
+                    <div className="text-xs text-zinc-500 flex items-center gap-1">
+                        <Edit3 className="w-3 h-3" />
+                        <span>Editable</span>
+                    </div>
+                )}
             </div>
             
             <textarea
