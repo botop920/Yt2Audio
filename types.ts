@@ -25,6 +25,19 @@ export const AVAILABLE_VOICES: VoiceConfig[] = [
   { name: 'Zephyr', id: 'Zephyr', gender: 'Female', style: 'Warm, Friendly' },
 ];
 
+export const SUPPORTED_ACCENTS = [
+  'American',
+  'British',
+  'Australian',
+  'Indian',
+  'Canadian',
+  'Irish',
+  'Scottish',
+  'South African',
+  'Nigerian',
+  'Neutral'
+];
+
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', name: 'English (US)' },
   { code: 'bn', name: 'Bengali (Bangla)' },

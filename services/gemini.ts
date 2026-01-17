@@ -17,14 +17,15 @@ export const extractScriptFromVideo = async (
   const ai = getAiClient();
   
   const prompt = `
-    You are an expert Dubbing Director.
+    You are an expert Dubbing Director and Native Translator.
     
     TARGET LANGUAGE: ${targetLanguage}
     
     TASK:
     1. Listen to the audio content.
-    2. Transcribe and translate strictly into ${targetLanguage} (Native Script).
-    3. Analyze the specific tone/emotion of EACH individual sentence.
+    2. Transcribe and translate strictly into ${targetLanguage}.
+    3. CRITICAL: The translation must sound 100% NATURAL and AUTHENTIC to a native speaker. Do NOT provide a literal, robotic translation. Use colloquialisms and natural phrasing where appropriate.
+    4. Analyze the specific tone/emotion of EACH individual sentence.
     
     FORMAT:
     [Emotion] Spoken text...
@@ -34,8 +35,8 @@ export const extractScriptFromVideo = async (
     [Happy], [Excited], [Sad], [Serious], [Urgent], [Calm], [Curious], [Sarcastic], [Warm], [Whisper], [Shout], [Professional], [Dramatic].
 
     CRITICAL RULES:
+    - OUTPUT ONLY THE SCRIPT. No introductory text, no "Here is the script", no markdown formatting (like **bold** or # headers) outside the lines.
     - DETECT VARIETY: Do NOT use the same emotion tag (e.g. [Serious]) for the whole script. 
-    - Listen for pitch, speed, and volume changes to assign specific tags.
     - Start EVERY sentence with a tag.
     - No Speaker labels.
     - No Romanized text.
@@ -56,7 +57,7 @@ export const extractScriptFromVideo = async (
           ],
         },
         config: {
-          systemInstruction: `You are a dynamic script writer. You HATE monotony. You always find specific emotional nuances in speech. You never output Romanized text.`,
+          systemInstruction: `You are a professional subtitle and dubbing generator. You only output the final script. You do not chat. You do not add meta-commentary.`,
           thinkingConfig: { thinkingBudget: 1024 }
         }
       });
@@ -89,13 +90,15 @@ export const extractScriptFromUrl = async (
     INSTRUCTIONS:
     1. Find the content.
     2. Translate it strictly into ${targetLanguage}.
-    3. Infer the intended emotion for each line based on context.
+    3. CRITICAL: The translation must sound 100% NATURAL and AUTHENTIC to a native speaker. Avoid literal, robotic phrasing.
+    4. Infer the intended emotion for each line based on context.
     
     FORMAT:
     [Emotion] Spoken text...
     [Emotion] Spoken text...
     
     RULES:
+    - OUTPUT ONLY THE SCRIPT. No "Here is the translation" or conversational filler.
     - Use varied emotions (e.g. [Curious], [Excited], [Serious], [Warm]).
     - Do NOT default to [Neutral] for everything.
     - No Speaker names.
@@ -123,6 +126,8 @@ export const extractScriptFromUrl = async (
 
       // Clean up markdown
       text = text.replace(/^#.*\n/gm, '').replace(/\*\*.*?\*\*/g, '').trim();
+      // Remove any common AI chat preamble if it sneaked in
+      text = text.replace(/^Here is the.*?:\n/i, '').trim();
 
       return text;
   } catch (err) {
@@ -134,7 +139,8 @@ export const extractScriptFromUrl = async (
 export const generateVoiceOver = async (
   script: string,
   voice: VoiceConfig,
-  speed: string = 'Normal'
+  speed: string = 'Normal',
+  accent: string = 'American'
 ): Promise<string> => {
   const ai = getAiClient();
   
@@ -167,6 +173,7 @@ export const generateVoiceOver = async (
     
     Configuration:
     - Voice Style: ${voice.style}
+    - Accent/Dialect: ${accent}
     - ${speedInstruction}
     - Language: Detect from text (ensure native pronunciation).
     
