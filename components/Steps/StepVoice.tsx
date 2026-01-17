@@ -13,6 +13,29 @@ interface StepVoiceProps {
   onBack: () => void;
 }
 
+const getEmotionColor = (tag: string) => {
+  const t = tag.toLowerCase().replace(/[\[\]]/g, '');
+  if (['happy', 'excited', 'joy', 'fun', 'cheerful', 'laugh'].some(k => t.includes(k))) {
+    return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+  }
+  if (['sad', 'grief', 'cry', 'upset', 'depressed'].some(k => t.includes(k))) {
+    return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+  }
+  if (['angry', 'shout', 'intense', 'furious', 'urgent', 'dramatic'].some(k => t.includes(k))) {
+    return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+  }
+  if (['fear', 'scared', 'nervous', 'worry'].some(k => t.includes(k))) {
+    return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+  }
+  if (['calm', 'soothing', 'warm', 'gentle', 'whisper'].some(k => t.includes(k))) {
+    return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
+  }
+  if (['curious', 'question', 'surprised'].some(k => t.includes(k))) {
+    return 'bg-violet-500/20 text-violet-400 border-violet-500/30';
+  }
+  return 'bg-zinc-700/50 text-zinc-300 border-zinc-600'; // Default/Serious/Neutral
+};
+
 // Advanced Script Display with Highlighted Emotions
 const ScriptDisplay: React.FC<{ text: string }> = ({ text }) => {
   // Regex to capture [Emotion] tags
@@ -22,13 +45,12 @@ const ScriptDisplay: React.FC<{ text: string }> = ({ text }) => {
     <p className="text-zinc-300 text-sm md:text-base leading-relaxed font-light whitespace-pre-wrap">
       {parts.map((part, index) => {
         if (part.startsWith('[') && part.endsWith(']')) {
-          // Clean the brackets for display if desired, or keep them. 
-          // Let's keep them but style them nicely.
           const emotion = part.replace(/[\[\]]/g, '');
+          const colorClass = getEmotionColor(emotion);
           return (
             <span 
               key={index} 
-              className="inline-flex items-center px-1.5 py-0.5 mx-1 rounded-md bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider border border-primary/20 align-middle transform -translate-y-px select-none"
+              className={`inline-flex items-center px-2 py-0.5 mx-1 rounded-md text-[10px] md:text-xs font-bold uppercase tracking-wider border align-middle transform -translate-y-px select-none shadow-sm ${colorClass}`}
             >
               {emotion}
             </span>

@@ -17,25 +17,28 @@ export const extractScriptFromVideo = async (
   const ai = getAiClient();
   
   const prompt = `
-    You are a professional translator and dubbing script writer.
+    You are an expert Dubbing Director.
     
     TARGET LANGUAGE: ${targetLanguage}
     
-    INSTRUCTIONS:
-    1. Listen to the audio content carefully.
-    2. Translate the spoken dialogue strictly into ${targetLanguage}.
-    3. CRITICAL: If the audio is in a different language, translate it to ${targetLanguage}.
-    4. CRITICAL: Do NOT use Romanized/Transliterated text. Use the native script of ${targetLanguage} only.
+    TASK:
+    1. Listen to the audio content.
+    2. Transcribe and translate strictly into ${targetLanguage} (Native Script).
+    3. Analyze the specific tone/emotion of EACH individual sentence.
     
     FORMAT:
     [Emotion] Spoken text...
     [Emotion] Spoken text...
 
-    RULES:
-    - START every sentence with an emotion tag in English (e.g. [Happy], [Sad], [Serious], [Excited]).
-    - Do NOT use speaker labels (e.g. "Narrator:", "Man:").
-    - Do NOT output timestamps.
-    - Combine short fragments into coherent sentences.
+    EMOTION LIST (Use variety):
+    [Happy], [Excited], [Sad], [Serious], [Urgent], [Calm], [Curious], [Sarcastic], [Warm], [Whisper], [Shout], [Professional], [Dramatic].
+
+    CRITICAL RULES:
+    - DETECT VARIETY: Do NOT use the same emotion tag (e.g. [Serious]) for the whole script. 
+    - Listen for pitch, speed, and volume changes to assign specific tags.
+    - Start EVERY sentence with a tag.
+    - No Speaker labels.
+    - No Romanized text.
   `;
 
   try {
@@ -53,7 +56,7 @@ export const extractScriptFromVideo = async (
           ],
         },
         config: {
-          systemInstruction: `You are a strict translator. You only output text in ${targetLanguage} prefixed by [Emotion] tags. You never output Romanized text.`,
+          systemInstruction: `You are a dynamic script writer. You HATE monotony. You always find specific emotional nuances in speech. You never output Romanized text.`,
           thinkingConfig: { thinkingBudget: 1024 }
         }
       });
@@ -84,17 +87,19 @@ export const extractScriptFromUrl = async (
     TARGET LANGUAGE: ${targetLanguage}
     
     INSTRUCTIONS:
-    1. Find the transcript or content.
+    1. Find the content.
     2. Translate it strictly into ${targetLanguage}.
-    3. CRITICAL: Do NOT use Romanized text. Use native script.
+    3. Infer the intended emotion for each line based on context.
     
     FORMAT:
     [Emotion] Spoken text...
     [Emotion] Spoken text...
     
     RULES:
-    - Include [Emotion] tags at the start of lines.
+    - Use varied emotions (e.g. [Curious], [Excited], [Serious], [Warm]).
+    - Do NOT default to [Neutral] for everything.
     - No Speaker names.
+    - Native script only.
   `;
 
   try {
@@ -136,8 +141,7 @@ export const generateVoiceOver = async (
       throw new Error("Script is empty. Cannot generate voiceover.");
   }
 
-  // Strip emotion tags for the TTS engine so it doesn't read "[Happy]" aloud
-  // regex removes [Anything] and (Anything)
+  // Strip emotion tags for the TTS engine
   const cleanScript = script
     .replace(/\[.*?\]/g, '') 
     .replace(/\(.*?\)/g, '')
