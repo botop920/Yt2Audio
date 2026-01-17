@@ -6,10 +6,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      // Polyfill process.env for the Google GenAI SDK usage in the code
-      'process.env': JSON.stringify({
-        API_KEY: env.API_KEY
-      })
+      // Safely replace process.env.API_KEY with the actual value during build
+      'process.env.API_KEY': JSON.stringify(env.API_KEY)
     },
     build: {
       outDir: 'dist',
